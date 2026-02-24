@@ -42,7 +42,7 @@ object Async:
   inline def checkCancelled()(using a: Async): Unit = a.checkCancelled()
 
   /** Run two computations in parallel and return both results. */
-  def par[A, B](a: => A, b: => B)(using async: Async): (A, B) =
+  def par[A, B](a: => A, b: => B)(using Async): (A, B) =
     val fa = fork(a)
     val fb = fork(b)
     (fa.join(), fb.join())
@@ -59,7 +59,7 @@ object Async:
     finally scope.close()
 
   /** Run two computations in parallel; cancel the other when the first completes. */
-  def parFirst[A](a: => A, b: => A)(using async: Async): A =
+  def parFirst[A](a: => A, b: => A)(using Async): A =
     val fa = fork(a)
     val fb = fork(b)
     val result =

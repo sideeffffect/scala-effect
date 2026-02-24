@@ -14,7 +14,7 @@ Requires [scala-cli](https://scala-cli.virtuslab.org/) >= 1.12.
 
 ```bash
 scala-cli compile .       # compile (downloads JDK 25 automatically)
-scala-cli test .          # run 180 tests
+scala-cli test .          # run 187 tests
 scala-cli run . --main-class effect.examples.composedExamples
 ```
 
@@ -48,15 +48,15 @@ val (log, (state, result)) =
 | `State[S]` | `Get s` + `Put s` | `get`, `set`, `modify`, `gets` | `(state: S, result: A)` |
 | `Reader[R]` | `Ask r` + `Local r` | `ask`, `asks`, `local` | `A` |
 | `Writer[W]` | `Tell w` + `Censor w` | `tell`, `censor` | `(output: List[W], result: A)` |
-| `Raise[E <: Exception]` | `Throw e` + `Catch e` | `raise`, `catchError`, `retry` | `Either[E, A]` |
+| `Raise[E <: Exception]` | `Throw e` + `Catch e` | `raise`, `catchError`, `retry`, `toOption` | `Either[E, A]` |
 | `Fail` | `Throw` (no value) | `fail` | `Option[A]` |
 | `Nondet` | `Empty` + `Choose` | `empty`, `choose`, `alt`, `oneOf` | `List[A]` |
 | `Amb` | `Alternative` + `Cut` | `choose`, `empty`, `guard`, `cut` | `List[A]` |
-| `Console` | `GetLine` + `PutStrLn` | `readLine`, `printLine` | `A` / `(output: List[String], result: A)` |
+| `Console` | `GetLine` + `PutStrLn` | `readLine`, `printLine` | `A` / `(remainingInput: List[String], output: List[String], result: A)` |
 | `Emit[A]` | `Yield a b` + `MapYield` | `emit`, `mapEmit`, `fold` | `(values: List[A], result: B)` |
-| `Timeout` | — | `checkTimeout`, `remaining`, `isExpired` | `Option[A]` |
+| `Timeout` | — | `deadline`, `checkTimeout`, `remaining`, `isExpired` | `Option[A]` / `Either[Duration, A]` |
 | `RefStore` | `HStore` (New + Get + Put) | `make` + extension methods on `Ref[A]` | `A` |
-| `Async` | `JPar` + `Par` | `fork`, `par`, `race` | `A` |
+| `Async` | `JPar` + `Par` | `fork`, `par`, `race`, `parFirst`, `checkCancelled` | `A` / `Either[Throwable, A]` |
 
 Error types must extend `Exception`. Domain exception case classes are provided
 in `errors.scala`: `EffectError`, `ArithmeticError`, `ValidationError`,
@@ -263,7 +263,7 @@ test/
   ConsoleTest.scala            # 9 tests
   EmitTest.scala               # 10 tests
   CompositionTest.scala        # 38 tests (2-way through 6-way composition)
-  AsyncTest.scala              # 10 tests
+  AsyncTest.scala              # 17 tests
   RefTest.scala                # 9 tests
   TimeoutTest.scala            # 8 tests
   AmbTest.scala                # 9 tests

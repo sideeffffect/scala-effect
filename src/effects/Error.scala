@@ -41,7 +41,7 @@ object Raise:
       case Left(e)  => recover(e)
 
   def retry[E <: Exception, A](program: Raise[E] ?=> A)(recover: E => Raise[E] ?=> A)(using
-      r: Raise[E]
+      Raise[E]
   ): A =
     handler(program) match
       case Right(a) => a
