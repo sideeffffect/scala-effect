@@ -53,7 +53,7 @@ object Nondet:
           val myIndex = choiceIndex
           choiceIndex += 1
           alternatives match
-            case Nil => throw EmptySignal
+            case Nil      => throw EmptySignal
             case h :: Nil =>
               actualPath += 0
               h
