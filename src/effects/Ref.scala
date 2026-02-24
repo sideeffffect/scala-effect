@@ -19,7 +19,7 @@ trait RefStore extends SharedCapability:
 
 object RefStore:
 
-  inline def make[A](initial: A)(using RefStore): Ref[A] = summon[RefStore].make(initial)
+  inline def make[A](initial: A)(using rs: RefStore): Ref[A] = rs.make(initial)
 
   /** Extension methods on Ref[A] for ergonomic access: ref.get, ref.set(v), ref.modify(f). */
   extension [A](ref: Ref[A])(using rs: RefStore)

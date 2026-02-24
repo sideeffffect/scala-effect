@@ -68,12 +68,12 @@ assertions.
 | Effective (Haskell) | scala-effect (Scala 3) | Example |
 |---|---|---|
 | `Prog effs a` | `(Cap1, Cap2, ...) ?=> A` | `def prog(using State[Int], Writer[String]): Int` |
-| `Member eff sig =>` | `using Cap` | `def get[S](using State[S]): S` |
+| `Member eff sig =>` | `using Cap` | `def get[S](using s: State[S]): S = s.get` |
 | `Members '[E1, E2] sig =>` | `(using E1, using E2)` | `def f(using Reader[Int], Raise[EffectError]): Int` |
 | `Handler effs oeffs ts a b` | `def handler(...)(Cap ?=> A): B` | `State.handler(0)(program)` returns `(state: Int, result: A)` |
 | `handle handler program` | `Effect.handler(init)(program)` | `Raise.handler(program)` returns `Either[E, A]` |
 | `h1 \|> h2` (fuse) | Nested handler application | `Writer.handler(State.handler(0)(program))` |
-| `Alg sig` (algebraic) | `inline` trait method forwarding | `inline def get[S](using State[S]): S = summon[State[S]].get` |
+| `Alg sig` (algebraic) | `inline` trait method forwarding | `inline def get[S](using s: State[S]): S = s.get` |
 | `Scp sig` (scoped) | Higher-order methods taking `?=>` blocks | `def local[A](f: R => R)(prog: Reader[R] ?=> A): A` |
 | `Distr sig` (distributive) | `StructuredTaskScope` + `CompletableFuture` | `Async.par(fetchUser(id), fetchOrder(id))` |
 
@@ -97,15 +97,12 @@ Companion objects expose `inline` operations via anonymous `using` clauses:
 
 ```scala
 object State:
-  inline def get[S](using State[S]): S = summon[State[S]].get
-  inline def modify[S](f: S => S)(using State[S]): Unit =
-    val s = summon[State[S]]
+  inline def get[S](using s: State[S]): S = s.get
+  inline def modify[S](f: S => S)(using s: State[S]): Unit =
     s.set(f(s.get))
 ```
 
-The `inline` eliminates the forwarding overhead at call sites. The `using`
-parameters are anonymous — no need to name them when they're only passed
-through.
+The `inline` eliminates the forwarding overhead at call sites.
 
 ### Handlers
 

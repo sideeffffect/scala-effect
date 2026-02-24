@@ -23,11 +23,11 @@ object Async:
   trait Fork[A]:
     def join(): A
 
-  inline def fork[A](task: => A)(using Async): Fork[A] =
-    summon[Async].fork(task)
+  inline def fork[A](task: => A)(using a: Async): Fork[A] =
+    a.fork(task)
 
   /** Run two computations in parallel and return both results. */
-  def par[A, B](a: => A, b: => B)(using Async): (A, B) =
+  def par[A, B](a: => A, b: => B)(using async: Async): (A, B) =
     val fa = fork(a)
     val fb = fork(b)
     (fa.join(), fb.join())

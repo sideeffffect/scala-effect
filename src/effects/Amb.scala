@@ -14,15 +14,14 @@ trait Amb extends SharedCapability:
 
 object Amb:
 
-  inline def empty[A](using Amb): A = summon[Amb].empty()
-  inline def choose[A](alternatives: List[A])(using Amb): A = summon[Amb].choose(alternatives)
-  inline def cut()(using Amb): Unit = summon[Amb].cut()
+  inline def empty[A](using a: Amb): A = a.empty()
+  inline def choose[A](alternatives: List[A])(using a: Amb): A = a.choose(alternatives)
+  inline def cut()(using a: Amb): Unit = a.cut()
 
-  inline def guard(condition: Boolean)(using Amb): Unit =
-    if !condition then summon[Amb].empty()
+  inline def guard(condition: Boolean)(using a: Amb): Unit =
+    if !condition then a.empty()
 
-  inline def chooseAndCut[A](alternatives: List[A])(using Amb): A =
-    val a = summon[Amb]
+  inline def chooseAndCut[A](alternatives: List[A])(using a: Amb): A =
     val result = a.choose(alternatives)
     a.cut()
     result

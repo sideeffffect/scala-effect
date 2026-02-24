@@ -19,8 +19,8 @@ object Raise:
   final private class RaiseException[E <: Exception](val token: AnyRef, val error: E)
       extends Exception(null, error, true, false)
 
-  inline def raise[E <: Exception](error: E)(using Raise[E]): Nothing =
-    summon[Raise[E]].raise(error)
+  inline def raise[E <: Exception](error: E)(using r: Raise[E]): Nothing =
+    r.raise(error)
 
   def handler[E <: Exception, A](program: Raise[E] ?=> A): Either[E, A] =
     val token = new AnyRef
@@ -41,7 +41,7 @@ object Raise:
       case Left(e)  => recover(e)
 
   def retry[E <: Exception, A](program: Raise[E] ?=> A)(recover: E => Raise[E] ?=> A)(using
-      Raise[E]
+      r: Raise[E]
   ): A =
     handler(program) match
       case Right(a) => a
@@ -54,7 +54,7 @@ trait Fail extends SharedCapability:
 object Fail:
   final private class FailException(val token: AnyRef) extends Exception(null, null, true, false)
 
-  inline def fail()(using Fail): Nothing = summon[Fail].fail()
+  inline def fail()(using f: Fail): Nothing = f.fail()
 
   def handler[A](program: Fail ?=> A): Option[A] =
     val token = new AnyRef

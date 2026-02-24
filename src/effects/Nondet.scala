@@ -14,16 +14,16 @@ trait Nondet extends SharedCapability:
 
 object Nondet:
 
-  inline def empty[A](using Nondet): A = summon[Nondet].empty()
+  inline def empty[A](using nd: Nondet): A = nd.empty()
 
-  inline def choose[A](alternatives: List[A])(using Nondet): A =
-    summon[Nondet].choose(alternatives)
+  inline def choose[A](alternatives: List[A])(using nd: Nondet): A =
+    nd.choose(alternatives)
 
-  inline def alt[A](lhs: => A, rhs: => A)(using Nondet): A =
-    if summon[Nondet].choose(List(true, false)) then lhs else rhs
+  inline def alt[A](lhs: => A, rhs: => A)(using nd: Nondet): A =
+    if nd.choose(List(true, false)) then lhs else rhs
 
-  inline def oneOf(range: Range)(using Nondet): Int =
-    summon[Nondet].choose(range.toList)
+  inline def oneOf(range: Range)(using nd: Nondet): Int =
+    nd.choose(range.toList)
 
   private case object EmptySignal extends Exception(null, null, true, false)
 

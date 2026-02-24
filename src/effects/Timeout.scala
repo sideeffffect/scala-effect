@@ -15,12 +15,12 @@ trait Timeout extends SharedCapability:
 
 object Timeout:
 
-  inline def deadline(using Timeout): Instant = summon[Timeout].deadline
-  inline def remaining(using Timeout): Duration = summon[Timeout].remaining
-  inline def checkTimeout()(using Timeout): Unit = summon[Timeout].checkTimeout()
+  inline def deadline(using t: Timeout): Instant = t.deadline
+  inline def remaining(using t: Timeout): Duration = t.remaining
+  inline def checkTimeout()(using t: Timeout): Unit = t.checkTimeout()
 
   /** Returns true if the deadline has passed. */
-  inline def isExpired(using Timeout): Boolean = summon[Timeout].remaining.isNegative
+  inline def isExpired(using t: Timeout): Boolean = t.remaining.isNegative
 
   final class TimeoutException(val deadline: Instant)
       extends Exception(s"Deadline exceeded: $deadline", null, true, false)

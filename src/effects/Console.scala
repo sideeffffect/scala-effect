@@ -13,8 +13,8 @@ trait Console extends SharedCapability:
 
 object Console:
 
-  inline def readLine()(using Console): String = summon[Console].readLine()
-  inline def printLine(s: String)(using Console): Unit = summon[Console].printLine(s)
+  inline def readLine()(using c: Console): String = c.readLine()
+  inline def printLine(s: String)(using c: Console): Unit = c.printLine(s)
 
   def liveHandler[A](program: Console ?=> A): A =
     val cap = new Console:

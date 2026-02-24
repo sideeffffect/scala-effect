@@ -12,11 +12,11 @@ trait Writer[W] extends SharedCapability:
 
 object Writer:
 
-  inline def tell[W](w: W)(using Writer[W]): Unit = summon[Writer[W]].tell(w)
+  inline def tell[W](w: W)(using wr: Writer[W]): Unit = wr.tell(w)
 
   /** Scoped operation: transform the output of a region. */
-  inline def censor[W, A](f: W => W)(program: Writer[W] ?=> A)(using Writer[W]): A =
-    summon[Writer[W]].censor(f)(program)
+  inline def censor[W, A](f: W => W)(program: Writer[W] ?=> A)(using wr: Writer[W]): A =
+    wr.censor(f)(program)
 
   /** Handler: run a computation collecting output into a List.
     *

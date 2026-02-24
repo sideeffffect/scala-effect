@@ -17,15 +17,14 @@ trait State[S] extends SharedCapability:
 
 object State:
 
-  inline def get[S](using State[S]): S = summon[State[S]].get
+  inline def get[S](using s: State[S]): S = s.get
 
-  inline def set[S](value: S)(using State[S]): Unit = summon[State[S]].set(value)
+  inline def set[S](value: S)(using s: State[S]): Unit = s.set(value)
 
-  inline def modify[S](f: S => S)(using State[S]): Unit =
-    val s = summon[State[S]]
+  inline def modify[S](f: S => S)(using s: State[S]): Unit =
     s.set(f(s.get))
 
-  inline def gets[S, A](f: S => A)(using State[S]): A = f(summon[State[S]].get)
+  inline def gets[S, A](f: S => A)(using s: State[S]): A = f(s.get)
 
   /** Handler: run a stateful computation with mutable state.
     *

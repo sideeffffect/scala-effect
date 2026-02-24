@@ -12,7 +12,7 @@ trait Emit[A] extends SharedCapability:
 
 object Emit:
 
-  inline def emit[A](value: A)(using Emit[A]): Unit = summon[Emit[A]].emit(value)
+  inline def emit[A](value: A)(using e: Emit[A]): Unit = e.emit(value)
 
   /** Handler: collect all emitted values into a list.
     *
@@ -41,7 +41,7 @@ object Emit:
     * Collects inner emissions, maps them, and re-emits. A direct forwarding approach would violate
     * SharedCapability's self-type restriction (can't capture `f` inside the anonymous class).
     */
-  def mapEmit[A, B](f: A => A)(program: Emit[A] ?=> B)(using Emit[A]): B =
+  def mapEmit[A, B](f: A => A)(program: Emit[A] ?=> B)(using outer: Emit[A]): B =
     val (innerValues, result) = toList(program)
-    innerValues.map(f).foreach(summon[Emit[A]].emit)
+    innerValues.map(f).foreach(outer.emit)
     result
