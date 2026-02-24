@@ -1,7 +1,8 @@
 package effect.tests
 
 import effect.effects.Async
-import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.{atomic, CancellationException}
+import atomic.{AtomicBoolean, AtomicInteger}
 
 class AsyncTest extends munit.FunSuite:
 
@@ -100,3 +101,106 @@ class AsyncTest extends munit.FunSuite:
 
     val result = Async.handler(program)
     assertEquals(result, "inner")
+
+  // =====================================================
+  // Cancellation tests
+  // =====================================================
+
+  test("cancel interrupts a sleeping task"):
+    val started = AtomicBoolean(false)
+    val interrupted = AtomicBoolean(false)
+
+    def program(using Async): String =
+      val f = Async.fork:
+        started.set(true)
+        try Thread.sleep(10_000)
+        catch case _: InterruptedException => interrupted.set(true)
+        "done"
+      Thread.sleep(50) // let the fork start
+      f.cancel()
+      "cancelled"
+
+    val result = Async.handler(program)
+    assertEquals(result, "cancelled")
+    assert(started.get(), "task should have started")
+    assert(interrupted.get(), "task should have been interrupted")
+
+  test("join after cancel throws CancellationException"):
+    def program(using Async): String =
+      val f = Async.fork:
+        Thread.sleep(10_000)
+        "never"
+      Thread.sleep(50)
+      f.cancel()
+      try
+        f.join()
+        "should not reach"
+      catch case _: CancellationException => "caught cancellation"
+
+    val result = Async.handler(program)
+    assertEquals(result, "caught cancellation")
+
+  test("isCancelled reflects cancel state"):
+    def program(using Async): (Boolean, Boolean) =
+      val f = Async.fork:
+        Thread.sleep(10_000)
+        "never"
+      Thread.sleep(50)
+      val before = f.isCancelled
+      f.cancel()
+      val after = f.isCancelled
+      (before, after)
+
+    val result = Async.handler(program)
+    assertEquals(result, (false, true))
+
+  test("isDone reflects completion state"):
+    def program(using Async): (Boolean, Boolean) =
+      val f = Async.fork:
+        Thread.sleep(10)
+        "done"
+      val before = f.isDone
+      Thread.sleep(100)
+      val after = f.isDone
+      (before, after)
+
+    val result = Async.handler(program)
+    // before may or may not be done depending on scheduling, but after should be
+    assertEquals(result._2, true)
+
+  test("checkCancelled is no-op when not interrupted"):
+    def program(using Async): String =
+      Async.checkCancelled()
+      "ok"
+
+    val result = Async.handler(program)
+    assertEquals(result, "ok")
+
+  test("cancel does not affect other forks"):
+    val completed = AtomicBoolean(false)
+
+    def program(using Async): String =
+      val f1 = Async.fork:
+        Thread.sleep(10_000)
+        "slow"
+      val f2 = Async.fork:
+        Thread.sleep(50)
+        completed.set(true)
+        "fast"
+      Thread.sleep(20)
+      f1.cancel()
+      f2.join()
+
+    val result = Async.handler(program)
+    assertEquals(result, "fast")
+    assert(completed.get(), "f2 should have completed")
+
+  test("cancel already-completed task is no-op"):
+    def program(using Async): String =
+      val f = Async.fork("instant")
+      Thread.sleep(50) // let it complete
+      f.cancel() // should be no-op
+      f.join()
+
+    val result = Async.handler(program)
+    assertEquals(result, "instant")
