@@ -1,6 +1,6 @@
 package effect.effects
 
-import effect.core.Capability
+import caps.SharedCapability
 
 /** Yield/Emit effect — corresponds to Effective's Yield effect (coroutine-style).
   *
@@ -10,7 +10,7 @@ import effect.core.Capability
   * Yield produces a value and optionally receives a response. This enables generator/coroutine
   * patterns.
   */
-trait Emit[A] extends Capability:
+trait Emit[A] extends SharedCapability:
   def emit(value: A): Unit
 
 object Emit:
@@ -31,15 +31,11 @@ object Emit:
 
   /** Handler: fold over emitted values with an accumulator.
     *
-    * Note: The fold function is stored in a local var-binding. With capture checking, an anonymous
-    * Emit that closes over the `f` parameter would have type `Emit[A]^{f}`, which is incompatible
-    * with `Emit[A]`. By using a var-indirection, we avoid the capture annotation propagating to the
-    * capability type.
+    * Note: A direct implementation (capturing `f` in anonymous Emit) would violate the
+    * SharedCapability self-type restriction — external references aren't in `{cap}`. So we delegate
+    * to toList and fold afterward.
     */
   def fold[A, S, B](initial: S)(f: (S, A) => S)(program: Emit[A] ?=> B): (S, B) =
-    // Delegate to toList, then fold. A direct implementation would capture
-    // `f` in the Emit capability, which capture checking flags as
-    // `Emit[A]^{f}` — incompatible with `Emit[A]`.
     val (values, result) = toList(program)
     (values.foldLeft(initial)(f), result)
 
@@ -48,11 +44,8 @@ object Emit:
     * In Effective: type MapYield a b = Scp (MapYield_ a b) mapYield :: (a -> a) -> (b -> b) -> Prog
     * sig x -> Prog sig x
     *
-    * This is a "scoped" operation: it intercepts emitted values in a region and transforms them
-    * before forwarding to the outer Emit capability.
-    *
-    * Implementation: collects inner emissions, maps them, and re-emits. This avoids the capture
-    * checking issue of creating a capability that closes over `f` and `outer`.
+    * Collects inner emissions, maps them, and re-emits. A direct forwarding approach would violate
+    * SharedCapability's self-type restriction (can't capture `f` inside the anonymous class).
     */
   def mapEmit[A, B](f: A => A)(program: Emit[A] ?=> B)(using outer: Emit[A]): B =
     val (innerValues, result) = toList(program)

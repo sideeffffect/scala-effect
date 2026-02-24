@@ -1,6 +1,6 @@
 package effect.effects
 
-import effect.core.Capability
+import caps.SharedCapability
 
 /** Console effect — corresponds to Effective's GetLine/PutStrLn effects.
   *
@@ -10,7 +10,7 @@ import effect.core.Capability
   * Both are algebraic effects (simple operations, no scoping). Combined into a single capability in
   * Scala since there's no need for the row-based splitting.
   */
-trait Console extends Capability:
+trait Console extends SharedCapability:
   def readLine(): String
   def printLine(s: String): Unit
 

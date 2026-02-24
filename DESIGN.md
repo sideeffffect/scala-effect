@@ -4,7 +4,11 @@ A direct-style effect system for Scala 3, inspired by the Haskell
 [Effective](https://github.com/zenzike/effective) library.
 
 Instead of monads and effect rows, this library uses **Scala 3 capabilities**:
-context functions (`?=>`), `boundary`/`break`, and experimental capture checking.
+context functions (`?=>`), `caps.SharedCapability`, and experimental capture checking.
+
+All effect traits extend `caps.SharedCapability`, which means the Scala 3 capture
+checker tracks them in capture sets and **prevents capabilities from escaping
+their handler scope** at compile time.
 
 ## Mapping from Effective to Scala
 
@@ -67,7 +71,9 @@ The nesting order determines semantics, exactly as in Effective.
 
 ### Capability trait
 
-Each effect is a trait extending `Capability`:
+Each effect is a trait extending `caps.SharedCapability`. This integrates with
+Scala 3's capture checker, which tracks capabilities in types and prevents
+them from escaping their handler scope at compile time.
 
 ```scala
 trait State[S] extends Capability:
@@ -103,14 +109,17 @@ def handler[S, A](initial: S)(program: State[S] ?=> A): (S, A) =
 ### Control flow effects
 
 For effects that alter control flow (Error, Nondeterminism), we use
-`boundary`/`break` from `scala.util`:
+token-tagged exceptions (since `boundary.Label` extends `Control` and would
+add its own capture tracking, complicating the anonymous class self-type):
 
 ```scala
 def handler[E, A](program: Raise[E] ?=> A): Either[E, A] =
-  boundary[Either[E, A]]:
-    val cap = new Raise[E]:
-      def raise(error: E): Nothing = break(Left(error))
-    Right(program(using cap))
+  val token = new AnyRef
+  val cap = new Raise[E]:
+    def raise(error: E): Nothing =
+      throw new RaiseException((token, error))
+  try Right(program(using cap))
+  catch case ex: RaiseException[?] if ... => Left(...)
 ```
 
 ## Effects implemented
@@ -126,46 +135,51 @@ def handler[E, A](program: Raise[E] ?=> A): Either[E, A] =
 | `Console`   | `GetLine` + `PutStrLn`    | `readLine`, `printLine`       |
 | `Emit[A]`   | `Yield a b`               | `emit`, `mapEmit`             |
 
-## Capture checking interactions
+## Capture checking with `caps.SharedCapability`
 
-With `-language:experimental.captureChecking`, Scala 3 tracks which values
-a capability closes over. This has practical consequences:
+All effect traits extend `caps.SharedCapability`. This gives two guarantees:
 
-**Works naturally**: handlers that use only local mutable state (vars)
-don't capture external values, so the capability is pure:
+### 1. Capabilities cannot escape their handler scope
+
+The capture checker prevents capabilities from being stored in variables
+or returned from handlers. For example, this is a **compile error**:
 
 ```scala
-// State handler: `cap` only closes over `current` (a local var)
-// Type: State[S] — no captures, works fine
-var current: S = initial
-val cap = new State[S]:
-  def get: S = current
-  def set(s: S): Unit = current = s
+var leaked: State[Int]^ = null.asInstanceOf[State[Int]^]
+State.handler(0):
+  leaked = summon[State[Int]]  // ERROR: cap not visible from variable leaked
+  42
 ```
 
-**Requires workaround**: handlers that close over function parameters
-produce capabilities with capture sets:
+Similarly, returning a closure that captures a capability is rejected:
 
 ```scala
-// Emit.fold: `cap` closes over `f` (a function parameter)
-// Type: Emit[A]^{f} — incompatible with Emit[A]
-val cap = new Emit[A]:
-  def emit(value: A): Unit = acc = f(acc, value)
-// ERROR: Found Emit[A]^{f}, Required: Emit[A]
+def leaky(): () => Int =
+  State.handler_(0):
+    () => State.get[Int]  // ERROR: cap cannot be included in outer capture set
 ```
 
-**Solution**: delegate to a non-capturing handler and post-process:
+### 2. SharedCapability self-type restriction
+
+Anonymous classes extending `SharedCapability` have their self-type restricted
+to `{cap}` — their own fresh capability. External references (like function
+parameters) are not in the allowed capture set. This means handlers that need
+to capture external functions delegate to non-capturing handlers:
 
 ```scala
+// Direct implementation rejected: `f` not in `{cap}` self-type
+// def fold[...](f: ...)(program: ...) =
+//   val cap = new Emit[A]:
+//     def emit(value: A): Unit = acc = f(acc, value)  // ERROR
+
+// Solution: delegate to toList (which doesn't capture `f`), then fold
 def fold[A, S, B](initial: S)(f: (S, A) => S)(program: Emit[A] ?=> B): (S, B) =
-  val (values, result) = toList(program)  // toList doesn't capture
+  val (values, result) = toList(program)
   (values.foldLeft(initial)(f), result)
 ```
 
-This is a fundamental design tension: capture checking prevents capabilities
-from escaping their scope (good for safety), but it also prevents higher-order
-handler combinators from creating capabilities that close over functions
-(a limitation to work around).
+Handlers that only close over local mutable state (vars) work naturally,
+since vars are not external capabilities.
 
 ## Nondeterminism: the hard case
 

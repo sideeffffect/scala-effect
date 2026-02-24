@@ -1,6 +1,6 @@
 package effect.effects
 
-import effect.core.Capability
+import caps.SharedCapability
 
 /** Error effect — corresponds to Effective's Throw/Catch effects.
   *
@@ -15,7 +15,7 @@ import effect.core.Capability
   * label: `Raise[E]^{label}`. Exceptions avoid this capture issue while maintaining identical
   * semantics (boundary/break compiles to exceptions anyway).
   */
-trait Raise[E] extends Capability:
+trait Raise[E] extends SharedCapability:
   def raise(error: E): Nothing
 
 object Raise:
@@ -71,7 +71,7 @@ object Raise:
   *
   * Corresponds to Effective's: type Throw = Alg Throw_ data Throw_ k = Throw
   */
-trait Fail extends Capability:
+trait Fail extends SharedCapability:
   def fail(): Nothing
 
 object Fail:

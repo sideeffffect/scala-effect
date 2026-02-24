@@ -1,6 +1,6 @@
 package effect.effects
 
-import effect.core.Capability
+import caps.SharedCapability
 
 /** Nondeterminism effect — corresponds to Effective's Empty/Choose effects.
   *
@@ -11,7 +11,7 @@ import effect.core.Capability
   * Scala doesn't have multi-shot continuations, so we use a **re-execution** strategy: the program
   * is run multiple times, each time with a different selection at each choice point.
   */
-trait Nondet extends Capability:
+trait Nondet extends SharedCapability:
   def empty[A](): A
   def choose[A](alternatives: List[A]): A
 

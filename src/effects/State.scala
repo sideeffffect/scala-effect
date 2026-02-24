@@ -1,6 +1,6 @@
 package effect.effects
 
-import effect.core.Capability
+import caps.SharedCapability
 
 /** State effect — corresponds to Effective's Get/Put effects.
   *
@@ -11,7 +11,7 @@ import effect.core.Capability
   * into a single State capability, since Scala capabilities don't require the artificial split that
   * effect rows demand.
   */
-trait State[S] extends Capability:
+trait State[S] extends SharedCapability:
   def get: S
   def set(s: S): Unit
 

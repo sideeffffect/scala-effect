@@ -1,6 +1,6 @@
 package effect.effects
 
-import effect.core.Capability
+import caps.SharedCapability
 
 /** Reader effect — corresponds to Effective's Ask/Local effects.
   *
@@ -11,7 +11,7 @@ import effect.core.Capability
   * methods on the same capability trait. The scoped nature of `local` is naturally expressed as a
   * higher-order method taking a by-name block.
   */
-trait Reader[R] extends Capability:
+trait Reader[R] extends SharedCapability:
   def ask: R
   def local[A](f: R => R)(program: Reader[R] ?=> A): A
 

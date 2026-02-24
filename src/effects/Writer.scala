@@ -1,6 +1,6 @@
 package effect.effects
 
-import effect.core.Capability
+import caps.SharedCapability
 
 /** Writer effect — corresponds to Effective's Tell/Censor effects.
   *
@@ -10,7 +10,7 @@ import effect.core.Capability
   *
   * Tell is algebraic (append to log), Censor is scoped (transform log for region).
   */
-trait Writer[W] extends Capability:
+trait Writer[W] extends SharedCapability:
   def tell(w: W): Unit
   def censor[A](f: W => W)(program: Writer[W] ?=> A): A
 
@@ -54,14 +54,10 @@ object Writer:
     *
     * Uses a Monoid-like combine for accumulation instead of List.
     *
-    * Note: Unlike `handler`, this version does not support `censor` because the anonymous
-    * capability would capture the `combine` function, which capture checking correctly flags as a
-    * potential escape. Use the List-based `handler` for censor support.
+    * Note: A direct implementation would reference `combine` inside the anonymous Writer class, but
+    * caps.SharedCapability restricts the self-type to `{cap}` — external references like `combine`
+    * are not in the allowed capture set. So we delegate to the list handler and fold afterward.
     */
   def handlerWith[W, A](empty: W)(combine: (W, W) => W)(program: Writer[W] ?=> A): (W, A) =
-    // Delegate to the list-based handler, then fold the results.
-    // A direct implementation would create a capability that captures
-    // `combine`, which capture checking correctly flags as `Writer[W]^{combine}`.
-    // This indirect approach avoids the capture issue entirely.
     val (values, result) = handler(program)
     (values.foldLeft(empty)(combine), result)
