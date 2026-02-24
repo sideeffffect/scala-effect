@@ -10,45 +10,47 @@ class StateTest extends munit.FunSuite:
     assertEquals(s, 42)
 
   test("set changes state"):
-    val (s, _) = State.handler(0):
-      State.set(99)
+    val (s, _) = State.handler(0)(State.set(99))
     assertEquals(s, 99)
 
   test("get after set returns new state"):
-    val (_, v) = State.handler(0):
+    def program(using State[Int]): Int =
       State.set(42)
       State.get[Int]
+
+    val (_, v) = State.handler(0)(program)
     assertEquals(v, 42)
 
   test("modify applies function"):
-    val (s, _) = State.handler(10):
-      State.modify[Int](_ * 3)
+    val (s, _) = State.handler(10)(State.modify[Int](_ * 3))
     assertEquals(s, 30)
 
   test("gets projects from state"):
-    val (_, v) = State.handler("hello"):
-      State.gets[String, Int](_.length)
+    val (_, v) = State.handler("hello")(State.gets[String, Int](_.length))
     assertEquals(v, 5)
 
   test("handler_ discards final state"):
-    val v = State.handler_(0):
+    def program(using State[Int]): Int =
       State.set(42)
       State.get[Int]
+
+    val v = State.handler_(0)(program)
     assertEquals(v, 42)
 
   test("execHandler returns only state"):
-    val s = State.execHandler(0):
-      State.set(42)
+    val s = State.execHandler(0)(State.set(42))
     assertEquals(s, 42)
 
   test("multiple set/get round-trips"):
-    val (s, v) = State.handler(0):
+    def program(using State[Int]): Int =
       State.set(1)
       val a = State.get[Int]
       State.set(a + 10)
       val b = State.get[Int]
       State.set(b * 2)
       State.get[Int]
+
+    val (s, v) = State.handler(0)(program)
     assertEquals(v, 22)
     assertEquals(s, 22)
 
@@ -58,10 +60,12 @@ class StateTest extends munit.FunSuite:
     assertEquals(s, 100)
 
   test("state with String type"):
-    val (s, _) = State.handler(""):
+    def program(using State[String]): Unit =
       State.modify[String](_ + "a")
       State.modify[String](_ + "b")
       State.modify[String](_ + "c")
+
+    val (s, _) = State.handler("")(program)
     assertEquals(s, "abc")
 
   test("state with List accumulation"):
@@ -76,7 +80,6 @@ class StateTest extends munit.FunSuite:
 
   test("nested state handlers are independent"):
     val (outer, (inner, _)) = State.handler(0):
-      State.handler(100):
-        State.modify[Int](_ + 1)
-    assertEquals(outer, 0) // outer untouched
-    assertEquals(inner, 101) // inner modified
+      State.handler(100)(State.modify[Int](_ + 1))
+    assertEquals(outer, 0)
+    assertEquals(inner, 101)

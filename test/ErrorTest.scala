@@ -14,10 +14,12 @@ class RaiseTest extends munit.FunSuite:
 
   test("raise short-circuits computation"):
     var reached = false
-    val r = Raise.handler[EffectError, Int]:
+    def program(using Raise[EffectError]): Int =
       Raise.raise(EffectError("early"))
       reached = true
       42
+
+    val r = Raise.handler(program)
     assertEquals(r, Left(EffectError("early")))
     assert(!reached)
 
@@ -59,8 +61,7 @@ class RaiseTest extends munit.FunSuite:
 
   test("nested handlers are independent"):
     val v = Raise.handler[EffectError, Either[ValidationError, Int]]:
-      Raise.handler[ValidationError, Int]:
-        Raise.raise(ValidationError("inner"))
+      Raise.handler[ValidationError, Int](Raise.raise(ValidationError("inner")))
     assertEquals(v, Right(Left(ValidationError("inner"))))
 
   test("error type can be any exception subtype"):
@@ -69,16 +70,17 @@ class RaiseTest extends munit.FunSuite:
 
   test("computation before raise is executed"):
     var counter = 0
-    Raise.handler[EffectError, Unit]:
+    def program(using Raise[EffectError]): Unit =
       counter += 1
       counter += 1
       Raise.raise(EffectError("stop"))
       counter += 1
+
+    Raise.handler(program)
     assertEquals(counter, 2)
 
   test("handler with complex success value"):
-    val r = Raise.handler[EffectError, Map[String, Int]]:
-      Map("a" -> 1, "b" -> 2)
+    val r = Raise.handler[EffectError, Map[String, Int]](Map("a" -> 1, "b" -> 2))
     assertEquals(r, Right(Map("a" -> 1, "b" -> 2)))
 
 class FailTest extends munit.FunSuite:
@@ -93,13 +95,17 @@ class FailTest extends munit.FunSuite:
 
   test("fail short-circuits"):
     var reached = false
-    Fail.handler[Unit]:
+    def program(using Fail): Unit =
       Fail.fail()
       reached = true
+
+    Fail.handler(program)
     assert(!reached)
 
   test("nested Fail handlers are independent"):
-    val r = Fail.handler[Int]:
+    def program(using Fail): Int =
       val inner: Option[Int] = Fail.handler[Int](Fail.fail())
       inner.getOrElse(99)
+
+    val r = Fail.handler(program)
     assertEquals(r, Some(99))

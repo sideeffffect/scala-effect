@@ -63,6 +63,20 @@ in `errors.scala`: `EffectError`, `ArithmeticError`, `ValidationError`,
 `ParseError`, `LimitExceeded`. Case classes give structural equality for test
 assertions.
 
+## Mapping from Effective
+
+| Effective (Haskell) | scala-effect (Scala 3) | Example |
+|---|---|---|
+| `Prog effs a` | `(Cap1, Cap2, ...) ?=> A` | `def prog(using State[Int], Writer[String]): Int` |
+| `Member eff sig =>` | `using Cap` | `def get[S](using State[S]): S` |
+| `Members '[E1, E2] sig =>` | `(using E1, using E2)` | `def f(using Reader[Int], Raise[EffectError]): Int` |
+| `Handler effs oeffs ts a b` | `def handler(...)(Cap ?=> A): B` | `State.handler(0)(program)` returns `(state: Int, result: A)` |
+| `handle handler program` | `Effect.handler(init)(program)` | `Raise.handler(program)` returns `Either[E, A]` |
+| `h1 \|> h2` (fuse) | Nested handler application | `Writer.handler(State.handler(0)(program))` |
+| `Alg sig` (algebraic) | `inline` trait method forwarding | `inline def get[S](using State[S]): S = summon[State[S]].get` |
+| `Scp sig` (scoped) | Higher-order methods taking `?=>` blocks | `def local[A](f: R => R)(prog: Reader[R] ?=> A): A` |
+| `Distr sig` (distributive) | `StructuredTaskScope` + `CompletableFuture` | `Async.par(fetchUser(id), fetchOrder(id))` |
+
 ## Architecture
 
 ### Capability traits
@@ -258,29 +272,6 @@ test/
   AmbTest.scala                # 9 tests
   NewCompositionTest.scala     # 19 tests (new effects composed)
 ```
-
-## Comparison with alternatives
-
-| Approach | Effect tracking | Direct style | Control flow | Concurrency | Composition |
-|---|---|---|---|---|---|
-| **scala-effect** | Capture checking | Yes | Exceptions | JDK 25 virtual threads | Nested handlers |
-| Cats Effect / ZIO | Monad types | No (monadic) | Fibers | Green threads | Monad transformers |
-| Kyo | Pending types | Partial | Continuations | Fibers | Pending values |
-| Plain Scala | None | Yes | Exceptions | Threads / futures | N/A |
-
-## Mapping from Effective
-
-| Effective (Haskell) | scala-effect (Scala 3) |
-|---|---|
-| `Prog effs a` | `(Cap1, Cap2, ...) ?=> A` |
-| `Member eff sig =>` | `using Cap` |
-| `Members '[E1, E2] sig =>` | `(using E1, using E2)` |
-| `Handler effs oeffs ts a b` | `def handler(...)( ... ?=> A): B` |
-| `handle handler program` | `Effect.handler(init)(program)` |
-| `h1 \|> h2` (fuse) | `H1.handler { H2.handler { program } }` |
-| `Alg sig` (algebraic) | `inline` trait method forwarding |
-| `Scp sig` (scoped) | Higher-order methods taking `?=>` blocks |
-| `Distr sig` (distributive) | `StructuredTaskScope` + `CompletableFuture` |
 
 ## Requirements
 

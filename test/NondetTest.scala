@@ -17,32 +17,37 @@ class NondetTest extends munit.FunSuite:
     assertEquals(r, List.empty[Int])
 
   test("choose then filter"):
-    val r = Nondet.handler[Int]:
+    def program(using Nondet): Int =
       val x = Nondet.choose(List(1, 2, 3, 4, 5))
       if x % 2 == 0 then x else Nondet.empty
+
+    val r = Nondet.handler(program)
     assertEquals(r, List(2, 4))
 
   test("two choices produce cartesian product"):
-    val r = Nondet.handler[(Int, String)]:
+    def program(using Nondet): (Int, String) =
       val x = Nondet.choose(List(1, 2))
       val y = Nondet.choose(List("a", "b"))
       (x, y)
+
+    val r = Nondet.handler(program)
     assertEquals(r.toSet, Set((1, "a"), (1, "b"), (2, "a"), (2, "b")))
     assertEquals(r.length, 4)
 
   test("three choices produce full combinations"):
-    val r = Nondet.handler[(Int, Int, Int)]:
+    def program(using Nondet): (Int, Int, Int) =
       val a = Nondet.choose(List(0, 1))
       val b = Nondet.choose(List(0, 1))
       val c = Nondet.choose(List(0, 1))
       (a, b, c)
-    assertEquals(r.length, 8) // 2^3
+
+    val r = Nondet.handler(program)
+    assertEquals(r.length, 8)
     assert(r.contains((0, 0, 0)))
     assert(r.contains((1, 1, 1)))
 
   test("alt explores both branches"):
-    val r = Nondet.handler[String]:
-      Nondet.alt("left", "right")
+    val r = Nondet.handler(Nondet.alt("left", "right"))
     assertEquals(r, List("left", "right"))
 
   test("knapsack example from Effective"):
@@ -62,10 +67,12 @@ class NondetTest extends munit.FunSuite:
 
   test("early empty prunes branch"):
     var counter = 0
-    val r = Nondet.handler[Int]:
+    def program(using Nondet): Int =
       Nondet.empty[Unit]
-      counter += 1 // should never run
+      counter += 1
       42
+
+    val r = Nondet.handler(program)
     assertEquals(r, Nil)
     assertEquals(counter, 0)
 
@@ -74,20 +81,24 @@ class NondetTest extends munit.FunSuite:
     assertEquals(r, List(1, 2, 3))
 
   test("choice-dependent branches"):
-    val r = Nondet.handler[Int]:
+    def program(using Nondet): Int =
       val x = Nondet.choose(List(1, 2, 3))
       val y = Nondet.choose((1 to x).toList)
       x * 10 + y
+
+    val r = Nondet.handler(program)
     assertEquals(r.toSet, Set(11, 21, 22, 31, 32, 33))
     assertEquals(r.length, 6)
 
   test("pythagorean triples"):
-    val r = Nondet.handler[(Int, Int, Int)]:
+    def program(using Nondet): (Int, Int, Int) =
       val a = Nondet.choose((1 to 10).toList)
       val b = Nondet.choose((a to 10).toList)
       val c = Nondet.choose((b to 10).toList)
       if a * a + b * b == c * c then (a, b, c)
       else Nondet.empty
+
+    val r = Nondet.handler(program)
     assertEquals(r, List((3, 4, 5), (6, 8, 10)))
 
   test("handler with pure computation (no choices)"):
@@ -95,8 +106,10 @@ class NondetTest extends munit.FunSuite:
     assertEquals(r, List(42))
 
   test("sequential choices with filtering"):
-    val r = Nondet.handler[Int]:
+    def program(using Nondet): Int =
       val x = Nondet.choose(List(1, 2, 3))
       if x == 2 then Nondet.empty
       x * 10
+
+    val r = Nondet.handler(program)
     assertEquals(r, List(10, 30))
