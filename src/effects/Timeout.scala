@@ -15,20 +15,16 @@ trait Timeout extends SharedCapability:
 
 object Timeout:
 
-  def deadline(using t: Timeout): Instant = t.deadline
-  def remaining(using t: Timeout): Duration = t.remaining
-  def checkTimeout()(using t: Timeout): Unit = t.checkTimeout()
+  inline def deadline(using Timeout): Instant = summon[Timeout].deadline
+  inline def remaining(using Timeout): Duration = summon[Timeout].remaining
+  inline def checkTimeout()(using Timeout): Unit = summon[Timeout].checkTimeout()
 
   /** Returns true if the deadline has passed. */
-  def isExpired(using t: Timeout): Boolean = t.remaining.isNegative
+  inline def isExpired(using Timeout): Boolean = summon[Timeout].remaining.isNegative
 
   final class TimeoutException(val deadline: Instant)
       extends Exception(s"Deadline exceeded: $deadline", null, true, false)
 
-  /** Handler: run a computation with a timeout.
-    *
-    * Returns None if the deadline was exceeded (via checkTimeout()), Some(result) otherwise.
-    */
   def handler[A](duration: Duration)(program: Timeout ?=> A): Option[A] =
     val dl = Instant.now().plus(duration)
     val cap = new Timeout:
@@ -39,7 +35,6 @@ object Timeout:
     try Some(program(using cap))
     catch case _: TimeoutException => None
 
-  /** Handler variant that throws on timeout. */
   def handlerOrThrow[A](duration: Duration)(program: Timeout ?=> A): A =
     val dl = Instant.now().plus(duration)
     val cap = new Timeout:
@@ -49,7 +44,7 @@ object Timeout:
         if Instant.now().isAfter(dl) then throw new TimeoutException(dl)
     program(using cap)
 
-  /** Handler that returns Either. */
+  /** Handler that returns Either[Duration, A] where Left contains elapsed time on timeout. */
   def handlerEither[A](duration: Duration)(program: Timeout ?=> A): Either[Duration, A] =
     val start = Instant.now()
     val dl = start.plus(duration)

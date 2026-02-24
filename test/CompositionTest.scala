@@ -10,30 +10,30 @@ class CompositionTest extends munit.FunSuite:
 
   test("State outside Raise = global state (state survives errors)"):
     val (state, result) = State.handler(0):
-      Raise.handler[String, Int]:
+      Raise.handler[EffectError, Int]:
         State.modify[Int](_ + 1)
         State.modify[Int](_ + 1)
-        Raise.raise("boom")
+        Raise.raise(EffectError("boom"))
     assertEquals(state, 2)
-    assertEquals(result, Left("boom"))
+    assertEquals(result, Left(EffectError("boom")))
 
   test("Raise outside State = local state (state lost on error)"):
-    val result = Raise.handler[String, (Int, Int)]:
+    val result = Raise.handler[EffectError, (Int, Int)]:
       State.handler(0):
         State.modify[Int](_ + 1)
         State.modify[Int](_ + 1)
-        Raise.raise("boom")
-    assertEquals(result, Left("boom"))
+        Raise.raise(EffectError("boom"))
+    assertEquals(result, Left(EffectError("boom")))
 
   test("State + Raise: successful path preserves state in both orderings"):
     val (s1, r1) = State.handler(0):
-      Raise.handler[String, Int]:
+      Raise.handler[EffectError, Int]:
         State.modify[Int](_ + 1)
         42
     assertEquals(s1, 1)
     assertEquals(r1, Right(42))
 
-    val r2 = Raise.handler[String, (Int, Int)]:
+    val r2 = Raise.handler[EffectError, (Int, Int)]:
       State.handler(0):
         State.modify[Int](_ + 1)
         42
@@ -130,37 +130,37 @@ class CompositionTest extends munit.FunSuite:
   // =====================================================
 
   test("Reader + Raise: environment-dependent errors"):
-    def validate(using Reader[Int], Raise[String]): Int =
+    def validate(using Reader[Int], Raise[ValidationError]): Int =
       val limit = Reader.ask[Int]
-      if limit <= 0 then Raise.raise("limit must be positive")
+      if limit <= 0 then Raise.raise(ValidationError("limit must be positive"))
       else limit
 
     val r1 = Reader.handler(10)(Raise.handler(validate))
     assertEquals(r1, Right(10))
 
     val r2 = Reader.handler(-1)(Raise.handler(validate))
-    assertEquals(r2, Left("limit must be positive"))
+    assertEquals(r2, Left(ValidationError("limit must be positive")))
 
   // =====================================================
   // Writer + Raise
   // =====================================================
 
   test("Writer outside Raise = log survives errors"):
-    val (log, result) = Writer.handler[String, Either[String, Int]]:
-      Raise.handler[String, Int]:
+    val (log, result) = Writer.handler[String, Either[EffectError, Int]]:
+      Raise.handler[EffectError, Int]:
         Writer.tell("step 1")
         Writer.tell("step 2")
-        Raise.raise("boom")
+        Raise.raise(EffectError("boom"))
     assertEquals(log, List("step 1", "step 2"))
-    assertEquals(result, Left("boom"))
+    assertEquals(result, Left(EffectError("boom")))
 
   test("Raise outside Writer = log lost on error"):
-    val result = Raise.handler[String, (List[String], Int)]:
+    val result = Raise.handler[EffectError, (List[String], Int)]:
       Writer.handler[String, Int]:
         Writer.tell("step 1")
         Writer.tell("step 2")
-        Raise.raise("boom")
-    assertEquals(result, Left("boom"))
+        Raise.raise(EffectError("boom"))
+    assertEquals(result, Left(EffectError("boom")))
 
   // =====================================================
   // Console + State
@@ -188,35 +188,35 @@ class CompositionTest extends munit.FunSuite:
   test("Console + Raise: input validation"):
     val (output, result) =
       Console.testHandler(List("not-a-number")):
-        Raise.handler[String, Int]:
+        Raise.handler[ParseError, Int]:
           Console.printLine("Enter number:")
           val input = Console.readLine()
           input.toIntOption match
             case Some(n) => n
-            case None    => Raise.raise(s"Invalid: $input")
+            case None    => Raise.raise(ParseError(s"Invalid: $input"))
     assertEquals(output, List("Enter number:"))
-    assertEquals(result, Left("Invalid: not-a-number"))
+    assertEquals(result, Left(ParseError("Invalid: not-a-number")))
 
   // =====================================================
   // Emit + Raise
   // =====================================================
 
   test("Emit outside Raise = emissions survive error"):
-    val (emitted, result) = Emit.toList[Int, Either[String, Int]]:
-      Raise.handler[String, Int]:
+    val (emitted, result) = Emit.toList[Int, Either[EffectError, Int]]:
+      Raise.handler[EffectError, Int]:
         Emit.emit(1)
         Emit.emit(2)
-        Raise.raise("stop")
+        Raise.raise(EffectError("stop"))
     assertEquals(emitted, List(1, 2))
-    assertEquals(result, Left("stop"))
+    assertEquals(result, Left(EffectError("stop")))
 
   test("Raise outside Emit = emissions lost on error"):
-    val result = Raise.handler[String, (List[Int], Int)]:
+    val result = Raise.handler[EffectError, (List[Int], Int)]:
       Emit.toList[Int, Int]:
         Emit.emit(1)
         Emit.emit(2)
-        Raise.raise("stop")
-    assertEquals(result, Left("stop"))
+        Raise.raise(EffectError("stop"))
+    assertEquals(result, Left(EffectError("stop")))
 
   // =====================================================
   // Nondet + State
@@ -237,8 +237,8 @@ class CompositionTest extends munit.FunSuite:
   test("Nondet + Raise: errors prune branches"):
     val results = Nondet.handler[Int]:
       val x = Nondet.choose(List(1, 2, 3, 4, 5))
-      Raise.catchError[String, Int] {
-        if x % 2 == 0 then Raise.raise("even")
+      Raise.catchError[EffectError, Int] {
+        if x % 2 == 0 then Raise.raise(EffectError("even"))
         x
       } { _ => -1 }
     assertEquals(results, List(1, -1, 3, -1, 5))
@@ -266,16 +266,16 @@ class CompositionTest extends munit.FunSuite:
     assert(log.last.contains("total=18"))
 
   test("Reader + Writer + Raise: environment-dependent logging with errors"):
-    val (log, result) = Writer.handler[String, Either[String, Int]]:
+    val (log, result) = Writer.handler[String, Either[LimitExceeded, Int]]:
       Reader.handler(5):
-        Raise.handler[String, Int]:
+        Raise.handler[LimitExceeded, Int]:
           val threshold = Reader.ask[Int]
           for i <- 1 to 10 do
             Writer.tell(s"processing $i")
-            if i > threshold then Raise.raise(s"exceeded threshold $threshold at $i")
+            if i > threshold then Raise.raise(LimitExceeded(s"exceeded threshold $threshold at $i"))
           42
     assertEquals(log.length, 6)
-    assertEquals(result, Left("exceeded threshold 5 at 6"))
+    assertEquals(result, Left(LimitExceeded("exceeded threshold 5 at 6")))
 
   test("State + Writer + Raise: stateful logging with error recovery"):
     val (log, (state, result)) =
@@ -284,11 +284,11 @@ class CompositionTest extends munit.FunSuite:
           val items = List(1, -1, 2, -2, 3)
           for item <- items do
             Writer.tell(s"processing $item")
-            val processed = Raise.catchError[String, Int] {
-              if item < 0 then Raise.raise(s"negative: $item")
+            val processed = Raise.catchError[ValidationError, Int] {
+              if item < 0 then Raise.raise(ValidationError(s"negative: $item"))
               item
             } { e =>
-              Writer.tell(s"  recovered from: $e")
+              Writer.tell(s"  recovered from: ${e.msg}")
               0
             }
             State.modify[Int](_ + processed)
@@ -326,22 +326,22 @@ class CompositionTest extends munit.FunSuite:
     assertEquals(state, 3)
 
   test("Reader + State + Writer + Raise: pipeline with error handling"):
-    def pipeline(using Reader[Int], State[Int], Writer[String], Raise[String]): List[Int] =
+    def pipeline(using Reader[Int], State[Int], Writer[String], Raise[ValidationError]): List[Int] =
       val factor = Reader.ask[Int]
       val items = List(10, 20, 0, 30)
       items.map: item =>
         State.modify[Int](_ + 1)
         Writer.tell(s"step ${State.get[Int]}: processing $item")
-        if item == 0 then Raise.raise("zero encountered")
+        if item == 0 then Raise.raise(ValidationError("zero encountered"))
         item * factor
 
     val (log, (state, result)) =
-      Writer.handler[String, (Int, Either[String, List[Int]])]:
+      Writer.handler[String, (Int, Either[ValidationError, List[Int]])]:
         State.handler(0):
           Reader.handler(2):
             Raise.handler(pipeline)
     assertEquals(state, 3)
-    assertEquals(result, Left("zero encountered"))
+    assertEquals(result, Left(ValidationError("zero encountered")))
     assertEquals(log.length, 3)
 
   // =====================================================
@@ -350,22 +350,22 @@ class CompositionTest extends munit.FunSuite:
 
   test("Reader + State + Writer + Emit + Raise: kitchen sink"):
     val (emitted, (log, (state, result))) =
-      Emit.toList[Int, (List[String], (Int, Either[String, Unit]))]:
-        Writer.handler[String, (Int, Either[String, Unit])]:
+      Emit.toList[Int, (List[String], (Int, Either[LimitExceeded, Unit]))]:
+        Writer.handler[String, (Int, Either[LimitExceeded, Unit])]:
           State.handler(0):
             Reader.handler(100):
-              Raise.handler[String, Unit]:
+              Raise.handler[LimitExceeded, Unit]:
                 val base = Reader.ask[Int]
                 for i <- 1 to 5 do
                   State.modify[Int](_ + 1)
                   val n = State.get[Int]
                   Writer.tell(s"iteration $n")
                   Emit.emit(base + n)
-                  if n == 3 then Raise.raise("stopped at 3")
+                  if n == 3 then Raise.raise(LimitExceeded("stopped at 3"))
     assertEquals(emitted, List(101, 102, 103))
     assertEquals(log, List("iteration 1", "iteration 2", "iteration 3"))
     assertEquals(state, 3)
-    assertEquals(result, Left("stopped at 3"))
+    assertEquals(result, Left(LimitExceeded("stopped at 3")))
 
   // =====================================================
   // Nondet + Writer: nondeterministic logging
@@ -381,20 +381,12 @@ class CompositionTest extends munit.FunSuite:
     assertEquals(results(0), (List("chose: a"), "A"))
     assertEquals(results(1), (List("chose: b"), "B"))
 
-  // =====================================================
-  // Nondet + Reader: nondeterminism with environment
-  // =====================================================
-
   test("Nondet + Reader: shared config across branches"):
     val results = Nondet.handler[Int]:
       Reader.handler(10):
         val x = Nondet.choose(List(1, 2, 3))
         x * Reader.ask[Int]
     assertEquals(results, List(10, 20, 30))
-
-  // =====================================================
-  // Emit + Writer: dual output channels
-  // =====================================================
 
   test("Emit + Writer: structured and unstructured output"):
     val (emitted, (log, _)) =
@@ -408,10 +400,6 @@ class CompositionTest extends munit.FunSuite:
           Emit.emit(3)
     assertEquals(emitted, List(1, 2, 3))
     assertEquals(log, List("starting", "middle", "done"))
-
-  // =====================================================
-  // Stress test: deeply nested handlers
-  // =====================================================
 
   test("deeply nested State handlers"):
     val (s1, (s2, (s3, v))) =
@@ -436,10 +424,6 @@ class CompositionTest extends munit.FunSuite:
       (a, b)
     assertEquals(v, (1, (2, 3)))
 
-  // =====================================================
-  // Fail + State
-  // =====================================================
-
   test("Fail + State: simple failure preserves state"):
     val (state, result) = State.handler(0):
       Fail.handler[Int]:
@@ -449,28 +433,20 @@ class CompositionTest extends munit.FunSuite:
     assertEquals(state, 2)
     assertEquals(result, None)
 
-  // =====================================================
-  // Multiple Raise handlers at different levels
-  // =====================================================
-
   test("nested Raise handlers catch at correct level"):
-    val result = Raise.handler[String, String]:
-      val inner: Either[Int, String] = Raise.handler[Int, String]:
-        Raise.raise(42)
+    val result = Raise.handler[EffectError, String]:
+      val inner: Either[ValidationError, String] = Raise.handler[ValidationError, String]:
+        Raise.raise(ValidationError("inner"))
       inner match
-        case Left(n)  => s"inner caught: $n"
+        case Left(e)  => s"inner caught: ${e.msg}"
         case Right(s) => s
-    assertEquals(result, Right("inner caught: 42"))
+    assertEquals(result, Right("inner caught: inner"))
 
   test("outer Raise catches when inner type doesn't match"):
-    val result = Raise.handler[String, Either[Int, String]]:
-      Raise.handler[Int, String]:
-        Raise.raise("outer error")
-    assertEquals(result, Left("outer error"))
-
-  // =====================================================
-  // Console + Writer + State: logging interactive session
-  // =====================================================
+    val result = Raise.handler[EffectError, Either[ValidationError, String]]:
+      Raise.handler[ValidationError, String]:
+        Raise.raise(EffectError("outer error"))
+    assertEquals(result, Left(EffectError("outer error")))
 
   test("Console + Writer + State: full interactive session"):
     val (output, (log, (state, _))) =
@@ -490,20 +466,12 @@ class CompositionTest extends munit.FunSuite:
     assertEquals(state, 8)
     assertEquals(log, List("cmd: add 5", "cmd: add 3", "cmd: show", "cmd: quit"))
 
-  // =====================================================
-  // Reader + Emit: environment-driven generation
-  // =====================================================
-
   test("Reader + Emit: emit values based on environment"):
     val (emitted, _) = Emit.toList[String, Unit]:
       Reader.handler(List("x", "y", "z")):
         val items = Reader.ask[List[String]]
         items.foreach(item => Emit.emit(s"item: $item"))
     assertEquals(emitted, List("item: x", "item: y", "item: z"))
-
-  // =====================================================
-  // State + Nondet + Writer: stateful nondeterministic logging
-  // =====================================================
 
   test("Nondet + Writer + State: per-branch logging and state"):
     val results = Nondet.handler[(List[String], (Int, Int))]:
@@ -517,10 +485,6 @@ class CompositionTest extends munit.FunSuite:
     assertEquals(results(0), (List("chose 10, state=10"), (10, 10)))
     assertEquals(results(1), (List("chose 20, state=20"), (20, 20)))
 
-  // =====================================================
-  // Emit + State + Reader: complex data pipeline
-  // =====================================================
-
   test("Emit + State + Reader: data pipeline"):
     val (emitted, (count, _)) =
       Emit.toList[String, (Int, Unit)]:
@@ -533,21 +497,17 @@ class CompositionTest extends munit.FunSuite:
     assertEquals(count, 3)
     assertEquals(emitted, List("> 1: hello", "> 2: world", "> 3: scala"))
 
-  // =====================================================
-  // Six effects: Reader + State + Writer + Emit + Console + Raise
-  // =====================================================
-
   test("six effects composed: Reader + State + Writer + Emit + Console + Raise"):
     val (output, (emitted, (log, (state, result)))) =
       Console.testHandler(List("go")):
-        Emit.toList[Int, (List[String], (Int, Either[String, Unit]))]:
-          Writer.handler[String, (Int, Either[String, Unit])]:
+        Emit.toList[Int, (List[String], (Int, Either[EffectError, Unit]))]:
+          Writer.handler[String, (Int, Either[EffectError, Unit])]:
             State.handler(0):
               Reader.handler("cfg"):
-                Raise.handler[String, Unit]:
+                Raise.handler[EffectError, Unit]:
                   Console.printLine(s"config=${Reader.ask[String]}")
                   val cmd = Console.readLine()
-                  if cmd != "go" then Raise.raise("expected 'go'")
+                  if cmd != "go" then Raise.raise(EffectError("expected 'go'"))
                   for i <- 1 to 3 do
                     State.modify[Int](_ + 1)
                     Emit.emit(State.get[Int] * 10)

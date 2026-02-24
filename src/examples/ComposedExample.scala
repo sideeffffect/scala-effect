@@ -2,23 +2,16 @@ package effect.examples
 
 import effect.effects.*
 
-/** Composed effects example — demonstrates handler composition.
-  *
-  * In Effective, handler composition uses explicit combinators: teletype str = getLinePure_ str |>
-  * putStrLnPure globalState s = except `fuse` state s
-  *
-  * In Scala, composition is simply nested handler application. The nesting order determines
-  * semantics, just like in Effective.
-  */
+/** Composed effects example — demonstrates handler composition. */
 
 /** A guessing game using Reader (secret), State (attempts), Console, and Raise. */
-def guessingGame(using Reader[Int], State[Int], Console, Raise[String]): Unit =
+def guessingGame(using Reader[Int], State[Int], Console, Raise[ParseError]): Unit =
   val secret = Reader.ask[Int]
   Console.printLine("Guess the number (1-100):")
 
   val input = Console.readLine()
   val guess = input.toIntOption.getOrElse:
-    Raise.raise(s"Invalid input: $input")
+    Raise.raise(ParseError(s"Invalid input: $input"))
 
   State.modify[Int](_ + 1)
   val attempts = State.get[Int]
@@ -31,11 +24,7 @@ def guessingGame(using Reader[Int], State[Int], Console, Raise[String]): Unit =
     Console.printLine("Too high!")
     guessingGame
 
-/** A computation combining Writer and State — counting and logging.
-  *
-  * Demonstrates the Effective pattern of composing independent handlers: ticker = tickState ||>
-  * state (0 :: Int)
-  */
+/** A computation combining Writer and State — counting and logging. */
 def tickingLog(items: List[String])(using Writer[String], State[Int]): List[String] =
   items.map: item =>
     State.modify[Int](_ + 1)
@@ -56,7 +45,7 @@ def numberedEmit(items: List[String])(using Emit[String], State[Int]): Unit =
   val result = Reader.handler(42):
     State.handler(0):
       Console.testHandler(List("50", "25", "42")):
-        Raise.handler[String, Unit]:
+        Raise.handler[ParseError, Unit]:
           guessingGame
   println("Guessing game result:")
   val (_, (output, errorOrUnit)) = result

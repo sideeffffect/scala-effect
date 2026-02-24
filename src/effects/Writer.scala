@@ -4,10 +4,6 @@ import caps.SharedCapability
 
 /** Writer effect — corresponds to Effective's Tell/Censor effects.
   *
-  * In Effective: type Tell w = Alg (Tell_ w) type Censor w = Scp (Censor_ w) tell :: Monoid w =>
-  * Member (Tell w) sig => w -> Prog sig () censor :: Member (Censor w) sig => (w -> w) -> Prog sig
-  * a -> Prog sig a
-  *
   * Tell is algebraic (append to log), Censor is scoped (transform log for region).
   */
 trait Writer[W] extends SharedCapability:
@@ -16,26 +12,17 @@ trait Writer[W] extends SharedCapability:
 
 object Writer:
 
-  /** Primitive operation: append to the log. */
-  def tell[W](w: W)(using wr: Writer[W]): Unit = wr.tell(w)
+  inline def tell[W](w: W)(using Writer[W]): Unit = summon[Writer[W]].tell(w)
 
-  /** Primitive operation: transform the output of a region.
-    *
-    * This is a scoped operation. In Effective, censor requires a dedicated handler (censors) that
-    * must be composed with the writer handler: handle (censors id |> writer) hoppy
-    *
-    * In Scala, it's just a method on the capability.
-    */
-  def censor[W, A](f: W => W)(program: Writer[W] ?=> A)(using wr: Writer[W]): A =
-    wr.censor(f)(program)
+  /** Scoped operation: transform the output of a region. */
+  inline def censor[W, A](f: W => W)(program: Writer[W] ?=> A)(using Writer[W]): A =
+    summon[Writer[W]].censor(f)(program)
 
   /** Handler: run a computation collecting output into a List.
     *
-    * Corresponds to Effective's: writer :: Monoid w => Handler '[Tell w] '[] '[WriterT w] a (w, a)
-    *
-    * Returns (collected output, result).
+    * Returns a named tuple of (output, result).
     */
-  def handler[W, A](program: Writer[W] ?=> A): (List[W], A) =
+  def handler[W, A](program: Writer[W] ?=> A): (output: List[W], result: A) =
     val buffer = collection.mutable.ListBuffer.empty[W]
     val cap = new Writer[W]:
       def tell(w: W): Unit = buffer += w
@@ -44,20 +31,20 @@ object Writer:
         inner.map(f).foreach(tell)
         result
     val result = program(using cap)
-    (buffer.toList, result)
+    (output = buffer.toList, result = result)
 
   /** Handler variant that discards the output. */
   def handler_[W, A](program: Writer[W] ?=> A): A =
-    handler(program)._2
+    handler(program).result
 
   /** Handler: run collecting output with a custom combine.
-    *
-    * Uses a Monoid-like combine for accumulation instead of List.
     *
     * Note: A direct implementation would reference `combine` inside the anonymous Writer class, but
     * caps.SharedCapability restricts the self-type to `{cap}` — external references like `combine`
     * are not in the allowed capture set. So we delegate to the list handler and fold afterward.
     */
-  def handlerWith[W, A](empty: W)(combine: (W, W) => W)(program: Writer[W] ?=> A): (W, A) =
+  def handlerWith[W, A](empty: W)(combine: (W, W) => W)(
+      program: Writer[W] ?=> A
+  ): (output: W, result: A) =
     val (values, result) = handler(program)
-    (values.foldLeft(empty)(combine), result)
+    (output = values.foldLeft(empty)(combine), result = result)

@@ -4,9 +4,6 @@ import caps.SharedCapability
 
 /** Nondeterminism effect — corresponds to Effective's Empty/Choose effects.
   *
-  * In Effective: type Empty = Alg Empty_ type Choose = Scp Choose_ empty :: Member Empty sig =>
-  * Prog sig a select :: Member Choose sig => [a] -> Prog sig a
-  *
   * Haskell's Effective uses multi-shot continuations (via the Prog monad) to explore all branches.
   * Scala doesn't have multi-shot continuations, so we use a **re-execution** strategy: the program
   * is run multiple times, each time with a different selection at each choice point.
@@ -17,22 +14,20 @@ trait Nondet extends SharedCapability:
 
 object Nondet:
 
-  def empty[A](using nd: Nondet): A = nd.empty()
+  inline def empty[A](using Nondet): A = summon[Nondet].empty()
 
-  def choose[A](alternatives: List[A])(using nd: Nondet): A =
-    nd.choose(alternatives)
+  inline def choose[A](alternatives: List[A])(using Nondet): A =
+    summon[Nondet].choose(alternatives)
 
-  def alt[A](lhs: => A, rhs: => A)(using nd: Nondet): A =
-    if nd.choose(List(true, false)) then lhs else rhs
+  inline def alt[A](lhs: => A, rhs: => A)(using Nondet): A =
+    if summon[Nondet].choose(List(true, false)) then lhs else rhs
 
-  def oneOf(range: Range)(using nd: Nondet): Int =
-    nd.choose(range.toList)
+  inline def oneOf(range: Range)(using Nondet): Int =
+    summon[Nondet].choose(range.toList)
 
   private case object EmptySignal extends Exception(null, null, true, false)
 
   /** Handler: collect all results from a nondeterministic computation.
-    *
-    * Corresponds to Effective's: list :: Prog '[Empty, Choose] a -> [a]
     *
     * Strategy: worklist-based exploration. Each worklist entry is a "path" of choice indices. We
     * track the path built during execution and schedule sibling alternatives for new choice points.

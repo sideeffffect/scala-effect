@@ -1,6 +1,7 @@
 package effect.tests
 
 import effect.effects.*
+import effect.effects.RefStore.*
 import java.util.concurrent.atomic.AtomicInteger
 
 class NewCompositionTest extends munit.FunSuite:
@@ -27,19 +28,16 @@ class NewCompositionTest extends munit.FunSuite:
   // =====================================================
 
   test("Async + Raise: error in fork propagates"):
-    // Raise.raise throws a RaiseException. Inside a fork, this propagates as
-    // a regular exception through the CompletableFuture. The outer Raise.handler
-    // catches it because the token matches.
-    val result = Raise.handler[String, String]:
+    val result = Raise.handler[EffectError, String]:
       Async.handler:
         val f = Async.fork:
-          Raise.raise[String]("async error")
+          Raise.raise(EffectError("async error"))
           "never"
         f.join()
-    assertEquals(result, Left("async error"))
+    assertEquals(result, Left(EffectError("async error")))
 
   test("Async + Raise: successful fork with error handler"):
-    val result = Raise.handler[String, String]:
+    val result = Raise.handler[EffectError, String]:
       Async.handler:
         val f = Async.fork("success")
         f.join()
@@ -95,9 +93,9 @@ class NewCompositionTest extends munit.FunSuite:
       RefStore.handler:
         val r = RefStore.make("hello")
         State.modify[Int](_ + 1)
-        RefStore.set(r, "world")
+        r.set("world")
         State.modify[Int](_ + 1)
-        (RefStore.get(r), State.get[Int])
+        (r.get, State.get[Int])
     assertEquals(state, 2)
     assertEquals(result, ("world", 2))
 
@@ -108,11 +106,11 @@ class NewCompositionTest extends munit.FunSuite:
   test("RefStore + Raise: refs survive error"):
     RefStore.handler:
       val r = RefStore.make("initial")
-      val result = Raise.handler[String, String]:
-        RefStore.set(r, "modified")
-        Raise.raise("error")
-      assertEquals(result, Left("error"))
-      assertEquals(RefStore.get(r), "modified")
+      val result = Raise.handler[EffectError, String]:
+        r.set("modified")
+        Raise.raise(EffectError("error"))
+      assertEquals(result, Left(EffectError("error")))
+      assertEquals(r.get, "modified")
 
   // =====================================================
   // RefStore + Writer
@@ -123,8 +121,8 @@ class NewCompositionTest extends munit.FunSuite:
       RefStore.handler:
         val counter = RefStore.make(Integer.valueOf(0))
         for i <- 1 to 3 do
-          RefStore.modify(counter)(n => Integer.valueOf(n.intValue + 1))
-          Writer.tell(s"counter=${RefStore.get(counter)}")
+          counter.modify(n => Integer.valueOf(n.intValue + 1))
+          Writer.tell(s"counter=${counter.get}")
     assertEquals(log, List("counter=1", "counter=2", "counter=3"))
 
   // =====================================================
@@ -138,8 +136,8 @@ class NewCompositionTest extends munit.FunSuite:
         State.modify[Int](_ + 1)
         Thread.sleep(50)
         Timeout.checkTimeout()
-        State.modify[Int](_ + 1) // should not execute
-    assertEquals(state, 2) // first two modifications preserved
+        State.modify[Int](_ + 1)
+    assertEquals(state, 2)
     assertEquals(result, None)
 
   // =====================================================
@@ -148,9 +146,9 @@ class NewCompositionTest extends munit.FunSuite:
 
   test("Timeout + Raise: timeout or error, whichever comes first"):
     val result = Timeout.handler(java.time.Duration.ofSeconds(10)):
-      Raise.handler[String, Int]:
-        Raise.raise("fast error") // error before timeout
-    assertEquals(result, Some(Left("fast error")))
+      Raise.handler[EffectError, Int]:
+        Raise.raise(EffectError("fast error"))
+    assertEquals(result, Some(Left(EffectError("fast error"))))
 
   // =====================================================
   // Amb + Writer
@@ -171,8 +169,8 @@ class NewCompositionTest extends munit.FunSuite:
   test("Amb + Raise: errors prune branches with recovery"):
     val results = Amb.handler[Int]:
       val x = Amb.choose(List(1, 2, 3, 4))
-      Raise.catchError[String, Int] {
-        if x % 2 == 0 then Raise.raise("even")
+      Raise.catchError[EffectError, Int] {
+        if x % 2 == 0 then Raise.raise(EffectError("even"))
         x * 10
       } { _ => -1 }
     assertEquals(results.toSet, Set(10, -1, 30, -1))
@@ -187,12 +185,11 @@ class NewCompositionTest extends munit.FunSuite:
       Async.handler:
         val forks = (1 to 10).map: _ =>
           Async.fork:
-            // Each fork increments; not atomic but test is sequential enough
             synchronized:
-              RefStore.modify(counter)(n => Integer.valueOf(n.intValue + 1))
+              counter.modify(n => Integer.valueOf(n.intValue + 1))
             Integer.valueOf(0)
         forks.foreach(_.join())
-      assertEquals(RefStore.get(counter), Integer.valueOf(10))
+      assertEquals(counter.get, Integer.valueOf(10))
 
   // =====================================================
   // Three+ new effects composed
@@ -212,6 +209,7 @@ class NewCompositionTest extends munit.FunSuite:
             Integer.valueOf(0)
           f1.join()
           f2.join()
+          ()
     assertEquals(state, 2)
     assertEquals(log.toSet, Set("task 1 done", "task 2 done"))
 
@@ -221,9 +219,9 @@ class NewCompositionTest extends munit.FunSuite:
         RefStore.handler:
           val r = RefStore.make("value")
           val prefix = Reader.ask[String]
-          Writer.tell(s"$prefix: created ref with ${RefStore.get(r)}")
-          RefStore.set(r, "updated")
-          Writer.tell(s"$prefix: ref is now ${RefStore.get(r)}")
+          Writer.tell(s"$prefix: created ref with ${r.get}")
+          r.set("updated")
+          Writer.tell(s"$prefix: ref is now ${r.get}")
     assertEquals(log, List("prefix: created ref with value", "prefix: ref is now updated"))
 
   test("Timeout + Writer + State: timeout with logging and state"):
@@ -259,24 +257,25 @@ class NewCompositionTest extends munit.FunSuite:
               Writer.tell("async work done")
               Integer.valueOf(0)
             f.join()
+            ()
     assertEquals(state, 42)
     assert(log.contains("config=cfg"))
     assert(log.contains("async work done"))
 
   test("RefStore + Emit + State + Raise: full pipeline with dynamic refs"):
     val (emitted, (state, result)) =
-      Emit.toList[String, (Int, Either[String, Unit])]:
+      Emit.toList[String, (Int, Either[ValidationError, Unit])]:
         State.handler(0):
-          Raise.handler[String, Unit]:
+          Raise.handler[ValidationError, Unit]:
             RefStore.handler:
               val items = RefStore.make(java.util.ArrayList[String]())
               for word <- List("hello", "world", "", "scala") do
-                if word.isEmpty then Raise.raise("empty word")
+                if word.isEmpty then Raise.raise(ValidationError("empty word"))
                 State.modify[Int](_ + 1)
-                val list = RefStore.get(items)
+                val list = items.get
                 list.add(word)
-                RefStore.set(items, list)
+                items.set(list)
                 Emit.emit(s"${State.get[Int]}: $word")
     assertEquals(emitted, List("1: hello", "2: world"))
     assertEquals(state, 2)
-    assertEquals(result, Left("empty word"))
+    assertEquals(result, Left(ValidationError("empty word")))

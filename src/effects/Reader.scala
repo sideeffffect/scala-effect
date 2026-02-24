@@ -4,8 +4,8 @@ import caps.SharedCapability
 
 /** Reader effect — corresponds to Effective's Ask/Local effects.
   *
-  * In Effective: type Ask r = Alg (Ask_ r) type Local r = Scp (Local_ r) ask :: Member (Ask r) sig =>
-  * Prog sig r local :: Member (Local r) sig => (r -> r) -> Prog sig a -> Prog sig a
+  * In Effective: type Ask r = Alg (Ask_ r) type Local r = Scp (Local_ r) ask :: Member (Ask r) sig
+  * => Prog sig r local :: Member (Local r) sig => (r -> r) -> Prog sig a -> Prog sig a
   *
   * Ask is algebraic (simple read), Local is scoped (modifies env for a region). In Scala, both are
   * methods on the same capability trait. The scoped nature of `local` is naturally expressed as a
@@ -17,25 +17,14 @@ trait Reader[R] extends SharedCapability:
 
 object Reader:
 
-  /** Primitive operation: read the environment. */
-  def ask[R](using r: Reader[R]): R = r.ask
+  inline def ask[R](using Reader[R]): R = summon[Reader[R]].ask
 
-  /** Primitive operation: project from the environment. */
-  def asks[R, A](f: R => A)(using r: Reader[R]): A = f(r.ask)
+  inline def asks[R, A](f: R => A)(using Reader[R]): A = f(summon[Reader[R]].ask)
 
-  /** Primitive operation: run a computation with a modified environment.
-    *
-    * This is a scoped operation — it modifies the capability for a region. In Effective, this is a
-    * Scp (scoped) effect requiring explicit forwarding through monad transformers. In Scala, it's
-    * just a method call.
-    */
-  def local[R, A](f: R => R)(program: Reader[R] ?=> A)(using r: Reader[R]): A =
-    r.local(f)(program)
+  /** Scoped operation: run a computation with a modified environment. */
+  inline def local[R, A](f: R => R)(program: Reader[R] ?=> A)(using Reader[R]): A =
+    summon[Reader[R]].local(f)(program)
 
-  /** Handler: run a computation with a fixed environment.
-    *
-    * Corresponds to Effective's: reader :: r -> Handler '[Ask r, Local r] '[] '[ReaderT r] a a
-    */
   def handler[R, A](env: R)(program: Reader[R] ?=> A): A =
     given Reader[R]:
       def ask: R = env

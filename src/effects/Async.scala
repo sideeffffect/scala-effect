@@ -23,33 +23,24 @@ object Async:
   trait Fork[A]:
     def join(): A
 
-  /** Fork a computation on a virtual thread. */
-  def fork[A](task: => A)(using a: Async): Fork[A] =
-    a.fork(task)
+  inline def fork[A](task: => A)(using Async): Fork[A] =
+    summon[Async].fork(task)
 
-  /** Run two computations in parallel and return both results.
-    *
-    * Corresponds to Effective's JPar:
-    *   jpar :: Member JPar sig => Prog sig a -> Prog sig b -> Prog sig (a, b)
-    */
-  def par[A, B](a: => A, b: => B)(using async: Async): (A, B) =
+  /** Run two computations in parallel and return both results. */
+  def par[A, B](a: => A, b: => B)(using Async): (A, B) =
     val fa = fork(a)
     val fb = fork(b)
     (fa.join(), fb.join())
 
-  /** Race two computations: return the first to succeed.
-    *
-    * Uses a fresh StructuredTaskScope with anySuccessfulResultOrThrow joiner. The losing
-    * computation is cancelled.
-    */
+  /** Race two computations: return the first to succeed. The loser is cancelled. */
   def race[A](a: => A, b: => A): A =
     val scope = StructuredTaskScope.open(
-      StructuredTaskScope.Joiner.anySuccessfulResultOrThrow[AnyRef]()
+      StructuredTaskScope.Joiner.anySuccessfulResultOrThrow[A]()
     )
     try
       scope.fork(asCallable(a))
       scope.fork(asCallable(b))
-      scope.join().asInstanceOf[A]
+      scope.join()
     finally scope.close()
 
   /** Bridge for passing capturing Scala lambdas to Java's Callable-accepting APIs.
@@ -58,8 +49,8 @@ object Async:
     * `Callable[T]` (pure). We use `unsafeAssumePure` because the StructuredTaskScope guarantees
     * the callable completes before `join()` returns.
     */
-  private def asCallable[A](task: => A): Callable[AnyRef] =
-    val c: Callable[AnyRef]^ = () => task.asInstanceOf[AnyRef]
+  private def asCallable[A](task: => A): Callable[A] =
+    val c: Callable[A]^ = () => task
     c.unsafeAssumePure
 
   /** Handler: run a computation with structured concurrency.
@@ -76,15 +67,15 @@ object Async:
     try
       val cap = new Async:
         def fork[B](task: => B): Fork[B] =
-          val future = CompletableFuture[AnyRef]()
+          val future = CompletableFuture[B]()
           scope.fork(asCallable {
-            try future.complete(task.asInstanceOf[AnyRef])
+            try future.complete(task)
             catch case e: Throwable => future.completeExceptionally(e)
             null
           })
           new Fork[B]:
             def join(): B =
-              try future.get().asInstanceOf[B]
+              try future.get()
               catch
                 case e: java.util.concurrent.ExecutionException =>
                   throw e.getCause
@@ -92,7 +83,7 @@ object Async:
         val result = program(using cap)
         result
       finally
-        scope.join() // always join before close, even on exception
+        scope.join()
     finally scope.close()
 
   /** Handler variant that catches failures as Either. */

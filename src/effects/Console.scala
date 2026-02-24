@@ -4,9 +4,6 @@ import caps.SharedCapability
 
 /** Console effect — corresponds to Effective's GetLine/PutStrLn effects.
   *
-  * In Effective: type GetLine = Alg GetLine_ type PutStrLn = Alg PutStrLn_ getLine :: Members
-  * '[GetLine] sig => Prog sig String putStrLn :: Members '[PutStrLn] sig => Prog sig ()
-  *
   * Both are algebraic effects (simple operations, no scoping). Combined into a single capability in
   * Scala since there's no need for the row-based splitting.
   */
@@ -16,13 +13,9 @@ trait Console extends SharedCapability:
 
 object Console:
 
-  def readLine()(using c: Console): String = c.readLine()
-  def printLine(s: String)(using c: Console): Unit = c.printLine(s)
+  inline def readLine()(using Console): String = summon[Console].readLine()
+  inline def printLine(s: String)(using Console): Unit = summon[Console].printLine(s)
 
-  /** Handler: real IO-based console.
-    *
-    * Corresponds to Effective's: teletypeIO :: Handler '[GetLine, PutStrLn] '[Alg IO] '[] a a
-    */
   def liveHandler[A](program: Console ?=> A): A =
     val cap = new Console:
       def readLine(): String = scala.io.StdIn.readLine()
@@ -31,14 +24,11 @@ object Console:
 
   /** Handler: pure console using predetermined input/output.
     *
-    * Corresponds to Effective's: getLinePure :: [String] -> Handler '[GetLine] '[] '[StateT
-    * [String]] a ([String], a) putStrLnPure :: Handler '[PutStrLn] '[] '[WriterT [String]] a
-    * ([String], a)
-    *
-    * This unifies both into a single pure handler. Returns (remaining input, collected output,
-    * result).
+    * Returns a named tuple of (remainingInput, output, result).
     */
-  def pureHandler[A](input: List[String])(program: Console ?=> A): (List[String], List[String], A) =
+  def pureHandler[A](
+      input: List[String]
+  )(program: Console ?=> A): (remainingInput: List[String], output: List[String], result: A) =
     var remainingInput = input
     val output = collection.mutable.ListBuffer.empty[String]
     val cap = new Console:
@@ -50,9 +40,11 @@ object Console:
           case Nil => ""
       def printLine(s: String): Unit = output += s
     val result = program(using cap)
-    (remainingInput, output.toList, result)
+    (remainingInput = remainingInput, output = output.toList, result = result)
 
-  /** Handler variant returning only the output lines. */
-  def testHandler[A](input: List[String])(program: Console ?=> A): (List[String], A) =
-    val (_, output, result) = pureHandler(input)(program)
-    (output, result)
+  /** Handler variant returning only the output lines and result. */
+  def testHandler[A](input: List[String])(
+      program: Console ?=> A
+  ): (output: List[String], result: A) =
+    val r = pureHandler(input)(program)
+    (output = r.output, result = r.result)

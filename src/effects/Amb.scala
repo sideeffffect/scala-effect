@@ -4,15 +4,8 @@ import caps.SharedCapability
 
 /** Amb effect — ambiguity/nondeterministic choice with cut support.
   *
-  * Corresponds to Effective's Alternative + Cut effects:
-  *   - Empty + Choose (Alternative)
-  *   - CutFail + CutCall (Cut pruning)
-  *
   * Amb extends Nondet with search control: `cut` prunes all remaining siblings at the current
   * choice point, implementing Prolog-style cut.
-  *
-  * In Effective: cut :: Members [Empty, Choose, CutFail] sig => Prog sig () cutCall :: Member
-  * CutCall sig => Prog sig a -> Prog sig a
   */
 trait Amb extends SharedCapability:
   def empty[A](): A
@@ -21,27 +14,22 @@ trait Amb extends SharedCapability:
 
 object Amb:
 
-  def empty[A](using a: Amb): A = a.empty()
-  def choose[A](alternatives: List[A])(using a: Amb): A = a.choose(alternatives)
-  def cut()(using a: Amb): Unit = a.cut()
+  inline def empty[A](using Amb): A = summon[Amb].empty()
+  inline def choose[A](alternatives: List[A])(using Amb): A = summon[Amb].choose(alternatives)
+  inline def cut()(using Amb): Unit = summon[Amb].cut()
 
-  /** Guard: fail the current branch if condition is false. */
-  def guard(condition: Boolean)(using a: Amb): Unit =
-    if !condition then a.empty()
+  inline def guard(condition: Boolean)(using Amb): Unit =
+    if !condition then summon[Amb].empty()
 
-  /** Choose and cut: pick the first alternative that succeeds, then cut. */
-  def chooseAndCut[A](alternatives: List[A])(using a: Amb): A =
+  inline def chooseAndCut[A](alternatives: List[A])(using Amb): A =
+    val a = summon[Amb]
     val result = a.choose(alternatives)
     a.cut()
     result
 
   private case object EmptySignal extends Exception(null, null, true, false)
-  private case object CutSignal extends Exception(null, null, true, false)
 
   /** Handler: collect all results with cut support.
-    *
-    * Corresponds to Effective's: cutList :: Prog '[Empty, Choose, Once] a -> [a] backtrack ::
-    * Handler '[Empty, Choose, Once] '[] '[CutListT] a [a]
     *
     * Cut prunes remaining siblings at the current choice point. Uses the same re-execution strategy
     * as Nondet.handler, extended with a "cut" flag that prunes the worklist when triggered.
@@ -51,15 +39,12 @@ object Amb:
     val worklist = collection.mutable.Queue.empty[Vector[Int]]
     worklist.enqueue(Vector.empty)
 
-    // Track which choice indices have been cut at each depth
     val cutAtDepth = collection.mutable.Set.empty[Int]
 
     while worklist.nonEmpty do
       val path = worklist.dequeue()
       var choiceIndex = 0
       val actualPath = collection.mutable.ArrayBuffer.empty[Int]
-      var cutTriggered = false
-      var cutDepth = -1
 
       val cap = new Amb:
         def empty[B](): B = throw EmptySignal
@@ -73,7 +58,6 @@ object Amb:
               h
             case _ =>
               if cutAtDepth.contains(myIndex) then
-                // This choice point was cut: only take the first alternative
                 actualPath += 0
                 alternatives.head
               else
@@ -86,16 +70,13 @@ object Amb:
                 alternatives(idx)
 
         def cut(): Unit =
-          // Mark the most recent choice point as cut
           if actualPath.nonEmpty then
-            cutTriggered = true
-            cutDepth = choiceIndex - 1
-            cutAtDepth += cutDepth
-            // Remove worklist entries that would explore siblings at this depth
+            val depth = choiceIndex - 1
+            cutAtDepth += depth
             val currentPrefix = actualPath.toVector.init
             worklist.filterInPlace: path =>
-              !(path.length > cutDepth &&
-                path.take(cutDepth) == currentPrefix.take(cutDepth))
+              !(path.length > depth &&
+                path.take(depth) == currentPrefix.take(depth))
 
       try
         val result = program(using cap)
